@@ -3,8 +3,10 @@ package com.apidech.sdk.emqxsdk;
 import java.io.IOException;
 import java.lang.reflect.Type;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 
 import okhttp3.Credentials;
@@ -16,376 +18,359 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 
 /**
- * EMQX REST API client.
+ * EMQX REST API client (v5).
  *
  * Provides synchronous methods to interact with EMQX Management REST API,
- * including user, ACL, client, session, subscription, and node management.
+ * including user, client, session, subscription, and node management.
+ *
+ * <p>Note: ACL management ({@code /acl}) is not available in EMQX 5.x CE
+ * via REST API. ACLs are configured via the file-based authorization backend
+ * or the {@code /authorization/sources} API.</p>
  */
 public final class EmqxSdkClient {
 
-    private final OkHttpClient httpClient;
-    private final String baseUrl;
-    private final Gson gson;
+	private final OkHttpClient httpClient;
+	private final String       baseUrl;
+	private final Gson         gson;
 
-    private EmqxSdkClient(Builder b) {
-        this.baseUrl = b.baseUrl;
-        this.gson    = b.gson != null ? b.gson : new Gson();
-        OkHttpClient.Builder httpB = new OkHttpClient.Builder();
-        if (b.authInterceptor != null) {
-            httpB.addInterceptor(b.authInterceptor);
-        }
-        this.httpClient = httpB.build();
-    }
+	private EmqxSdkClient(Builder b) {
+		this.baseUrl = b.baseUrl;
+		this.gson    = b.gson != null ? b.gson : new Gson();
 
-    // --------- User Management ---------
+		OkHttpClient.Builder httpB = new OkHttpClient.Builder()
+				.connectTimeout(b.connectTimeoutMs, TimeUnit.MILLISECONDS)
+				.readTimeout(b.readTimeoutMs, TimeUnit.MILLISECONDS)
+				.writeTimeout(b.writeTimeoutMs, TimeUnit.MILLISECONDS);
 
-    /**
-     * Create a new user in the specified authenticator chain.
-     *
-     * @param authenticatorId the ID of the authentication plugin (e.g., "default")
-     * @param user            details of the user to create
-     * @return the created {@link UserDto}
-     * @throws IOException if a network or serialization error occurs
-     */
-    public UserDto createUser(AuthenticatorId authenticatorId, UserDto user) throws IOException {
-        String url = String.format("%s/authentication/%s/users", baseUrl, authenticatorId);
-        String json = gson.toJson(user);
-        RequestBody body = RequestBody.create(json, MediaType.get("application/json"));
-        Request req = new Request.Builder().url(url).post(body).build();
-        try (Response resp = httpClient.newCall(req).execute()) {
-            if (!resp.isSuccessful()) {
-                throw new IOException("Error creating user: " + resp);
-            }
-            return gson.fromJson(resp.body().string(), UserDto.class);
-        }
-    }
+		if (b.authInterceptor != null) {
+			httpB.addInterceptor(b.authInterceptor);
+		}
 
-    /**
-     * Retrieve details of a specific user.
-     *
-     * @param authenticatorId the ID of the authentication plugin
-     * @param username        the username to fetch
-     * @return the {@link UserDto} for the specified user
-     * @throws IOException if a network or parsing error occurs or user not found
-     */
-    public UserDto getUser(AuthenticatorId authenticatorId, String username) throws IOException {
-        String url = String.format("%s/authentication/%s/users/%s", baseUrl, authenticatorId, username);
-        Request req = new Request.Builder().url(url).get().build();
-        try (Response resp = httpClient.newCall(req).execute()) {
-            if (!resp.isSuccessful()) {
-                throw new IOException("Error fetching user: " + resp);
-            }
-            return gson.fromJson(resp.body().string(), UserDto.class);
-        }
-    }
+		this.httpClient = httpB.build();
+	}
 
-    /**
-     * List all users under the given authenticator chain.
-     *
-     * @param authenticatorId the ID of the authentication plugin
-     * @return a list of {@link UserDto}
-     * @throws IOException if a network or parsing error occurs
-     */
-    public List<UserDto> listUsers(AuthenticatorId authenticatorId) throws IOException {
-        String url = String.format("%s/authentication/%s/users", baseUrl, authenticatorId);
-        Request req = new Request.Builder().url(url).get().build();
-        try (Response resp = httpClient.newCall(req).execute()) {
-            if (!resp.isSuccessful()) {
-                throw new IOException("Error listing users: " + resp);
-            }
-            Type listType = new TypeToken<List<UserDto>>() {}.getType();
-            return gson.fromJson(resp.body().string(), listType);
-        }
-    }
+	// -------------------------------------------------------------------------
+	// Internal helpers
+	// -------------------------------------------------------------------------
 
-    /**
-     * Delete a user by username.
-     *
-     * @param authenticatorId the ID of the authentication plugin
-     * @param username        the username to delete
-     * @throws IOException if a network error occurs or deletion fails
-     */
-    public void deleteUser(AuthenticatorId authenticatorId, String username) throws IOException {
-        String url = String.format("%s/authentication/%s/users/%s", baseUrl, authenticatorId, username);
-        Request req = new Request.Builder().url(url).delete().build();
-        try (Response resp = httpClient.newCall(req).execute()) {
-            if (!resp.isSuccessful()) {
-                throw new IOException("Error deleting user: " + resp);
-            }
-        }
-    }
+	private void throwOnError(Response resp) throws IOException {
+		if (!resp.isSuccessful()) {
+			String body = resp.body() != null ? resp.body().string() : "";
+			throw new EmqxApiException(resp.code(), parseErrorMessage(body));
+		}
+	}
 
-    // --------- ACL Management ---------
+	private String parseErrorMessage(String body) {
+		try {
+			JsonObject json = gson.fromJson(body, JsonObject.class);
+			if (json != null) {
+				if (json.has("message")) return json.get("message").getAsString();
+				if (json.has("reason"))  return json.get("reason").getAsString();
+				if (json.has("error"))   return json.get("error").getAsString();
+				if (json.has("code"))    return json.get("code").getAsString();
+			}
+		} catch (Exception ignored) { /* not JSON */ }
+		return body.isBlank() ? "Unknown error" : body;
+	}
 
-    /**
-     * Create a new ACL rule.
-     *
-     * @param acl the ACL rule details
-     * @return the created {@link AclDto}
-     * @throws IOException if a network or serialization error occurs
-     */
-    public AclDto createAcl(AclDto acl) throws IOException {
-        String url = String.format("%s/acl", baseUrl);
-        String json = gson.toJson(acl);
-        RequestBody body = RequestBody.create(json, MediaType.get("application/json"));
-        Request req = new Request.Builder().url(url).post(body).build();
-        try (Response resp = httpClient.newCall(req).execute()) {
-            if (!resp.isSuccessful()) {
-                throw new IOException("Error creating ACL: " + resp);
-            }
-            return gson.fromJson(resp.body().string(), AclDto.class);
-        }
-    }
+	private String bodyString(Response resp) throws IOException {
+		return resp.body() != null ? resp.body().string() : "";
+	}
 
-    /**
-     * Retrieve an ACL rule by its ID.
-     *
-     * @param aclId the ID of the ACL rule
-     * @return the {@link AclDto}
-     * @throws IOException if a network or parsing error occurs or rule not found
-     */
-    public AclDto getAcl(int aclId) throws IOException {
-        String url = String.format("%s/acl/%d", baseUrl, aclId);
-        Request req = new Request.Builder().url(url).get().build();
-        try (Response resp = httpClient.newCall(req).execute()) {
-            if (!resp.isSuccessful()) {
-                throw new IOException("Error fetching ACL: " + resp);
-            }
-            return gson.fromJson(resp.body().string(), AclDto.class);
-        }
-    }
+	private <T> List<T> parseListResponse(Response resp, Type elementType) throws IOException {
+		throwOnError(resp);
+		String body = bodyString(resp);
+		if (body.isBlank()) {
+			// Some list endpoints return empty body on empty result
+			//noinspection unchecked
+			return (List<T>) java.util.Collections.emptyList();
+		}
+		// Check if wrapped in {data:[], meta:{}} format
+		try {
+			JsonObject wrapper = gson.fromJson(body, JsonObject.class);
+			if (wrapper != null && wrapper.has("data")) {
+				Type listType = TypeToken.getParameterized(List.class, elementType).getType();
+				return gson.fromJson(wrapper.getAsJsonArray("data"), listType);
+			}
+		} catch (Exception ignored) { /* fall through to array parse */ }
+		// Plain array response
+		Type listType = TypeToken.getParameterized(List.class, elementType).getType();
+		return gson.fromJson(body, listType);
+	}
 
-    /**
-     * List all ACL rules.
-     *
-     * @return a list of {@link AclDto}
-     * @throws IOException if a network or parsing error occurs
-     */
-    public List<AclDto> listAcls() throws IOException {
-        String url = String.format("%s/acl", baseUrl);
-        Request req = new Request.Builder().url(url).get().build();
-        try (Response resp = httpClient.newCall(req).execute()) {
-            if (!resp.isSuccessful()) {
-                throw new IOException("Error listing ACLs: " + resp);
-            }
-            Type listType = new TypeToken<List<AclDto>>() {}.getType();
-            return gson.fromJson(resp.body().string(), listType);
-        }
-    }
+	// -------------------------------------------------------------------------
+	// User Management
+	// -------------------------------------------------------------------------
 
-    /**
-     * Delete an ACL rule by its ID.
-     *
-     * @param aclId the ID of the ACL rule to delete
-     * @throws IOException if a network error occurs or deletion fails
-     */
-    public void deleteAcl(int aclId) throws IOException {
-        String url = String.format("%s/acl/%d", baseUrl, aclId);
-        Request req = new Request.Builder().url(url).delete().build();
-        try (Response resp = httpClient.newCall(req).execute()) {
-            if (!resp.isSuccessful()) {
-                throw new IOException("Error deleting ACL: " + resp);
-            }
-        }
-    }
+	/**
+	 * Create a new user in the specified authenticator chain.
+	 *
+	 * <p>The authenticator must exist in EMQX (e.g. created via
+	 * {@code POST /authentication} with {@code mechanism: "password_based"}
+	 * and {@code backend: "built_in_database"}).</p>
+	 *
+	 * @param authenticatorId the authenticator ID (e.g. "password_based:built_in_database")
+	 * @param user           contains {@code user_id} and {@code password}
+	 * @return the created {@link UserDto} (includes EMQX-set fields like {@code is_superuser})
+	 * @throws EmqxApiException on HTTP errors or parse failures
+	 */
+	public UserDto createUser(AuthenticatorId authenticatorId, UserDto user) throws IOException {
+		String url  = String.format("%s/authentication/%s/users", baseUrl, authenticatorId);
+		String json = gson.toJson(user);
+		RequestBody body = RequestBody.create(json, MediaType.get("application/json"));
+		Request req = new Request.Builder().url(url).post(body).build();
+		try (Response resp = httpClient.newCall(req).execute()) {
+			throwOnError(resp);
+			return gson.fromJson(bodyString(resp), UserDto.class);
+		}
+	}
 
-    // --------- Client Management ---------
+	/**
+	 * Retrieve details of a specific user.
+	 *
+	 * @param authenticatorId the authenticator ID
+	 * @param userId         the user identifier
+	 * @return the {@link UserDto}
+	 * @throws EmqxApiException if not found or on network error
+	 */
+	public UserDto getUser(AuthenticatorId authenticatorId, String userId) throws IOException {
+		String url  = String.format("%s/authentication/%s/users/%s", baseUrl, authenticatorId, userId);
+		Request req = new Request.Builder().url(url).get().build();
+		try (Response resp = httpClient.newCall(req).execute()) {
+			throwOnError(resp);
+			return gson.fromJson(bodyString(resp), UserDto.class);
+		}
+	}
 
-    /**
-     * List all connected clients.
-     *
-     * @return a list of {@link ClientDto}
-     * @throws IOException if a network or parsing error occurs
-     */
-    public List<ClientDto> listClients() throws IOException {
-        String url = String.format("%s/clients", baseUrl);
-        Request req = new Request.Builder().url(url).get().build();
-        try (Response resp = httpClient.newCall(req).execute()) {
-            if (!resp.isSuccessful()) {
-                throw new IOException("Error listing clients: " + resp);
-            }
-            Type listType = new TypeToken<List<ClientDto>>() {}.getType();
-            return gson.fromJson(resp.body().string(), listType);
-        }
-    }
+	/**
+	 * List all users under the given authenticator chain.
+	 *
+	 * @param authenticatorId the authenticator ID
+	 * @return a list of {@link UserDto}
+	 * @throws EmqxApiException on network or parse errors
+	 */
+	public List<UserDto> listUsers(AuthenticatorId authenticatorId) throws IOException {
+		String url  = String.format("%s/authentication/%s/users", baseUrl, authenticatorId);
+		Request req = new Request.Builder().url(url).get().build();
+		try (Response resp = httpClient.newCall(req).execute()) {
+			return parseListResponse(resp, UserDto.class);
+		}
+	}
 
-    /**
-     * Disconnect a client by client ID.
-     *
-     * @param clientId the ID of the client to disconnect
-     * @throws IOException if a network error occurs or disconnection fails
-     */
-    public void disconnectClient(String clientId) throws IOException {
-        String url = String.format("%s/clients/%s", baseUrl, clientId);
-        Request req = new Request.Builder().url(url).delete().build();
-        try (Response resp = httpClient.newCall(req).execute()) {
-            if (!resp.isSuccessful()) {
-                throw new IOException("Error disconnecting client: " + resp);
-            }
-        }
-    }
+	/**
+	 * Delete a user by identifier.
+	 *
+	 * @param authenticatorId the authenticator ID
+	 * @param userId         the user to delete
+	 * @throws EmqxApiException if deletion fails
+	 */
+	public void deleteUser(AuthenticatorId authenticatorId, String userId) throws IOException {
+		String url  = String.format("%s/authentication/%s/users/%s", baseUrl, authenticatorId, userId);
+		Request req = new Request.Builder().url(url).delete().build();
+		try (Response resp = httpClient.newCall(req).execute()) {
+			throwOnError(resp);
+		}
+	}
 
-    // --------- Session Management ---------
+	// -------------------------------------------------------------------------
+	// Client Management
+	// -------------------------------------------------------------------------
 
-    /**
-     * Retrieve session information for a client.
-     *
-     * @param clientId the ID of the client
-     * @return the {@link SessionDto}
-     * @throws IOException if a network or parsing error occurs or session not found
-     */
-    public SessionDto getSession(String clientId) throws IOException {
-        String url = String.format("%s/sessions/%s", baseUrl, clientId);
-        Request req = new Request.Builder().url(url).get().build();
-        try (Response resp = httpClient.newCall(req).execute()) {
-            if (!resp.isSuccessful()) {
-                throw new IOException("Error fetching session: " + resp);
-            }
-            return gson.fromJson(resp.body().string(), SessionDto.class);
-        }
-    }
+	/**
+	 * List all connected MQTT clients.
+	 *
+	 * @return a list of {@link ClientDto}
+	 * @throws EmqxApiException on network or parse errors
+	 */
+	public List<ClientDto> listClients() throws IOException {
+		String url  = String.format("%s/clients", baseUrl);
+		Request req = new Request.Builder().url(url).get().build();
+		try (Response resp = httpClient.newCall(req).execute()) {
+			return parseListResponse(resp, ClientDto.class);
+		}
+	}
 
-    /**
-     * Delete a session for a client.
-     *
-     * @param clientId the ID of the client
-     * @throws IOException if a network error occurs or deletion fails
-     */
-    public void deleteSession(String clientId) throws IOException {
-        String url = String.format("%s/sessions/%s", baseUrl, clientId);
-        Request req = new Request.Builder().url(url).delete().build();
-        try (Response resp = httpClient.newCall(req).execute()) {
-            if (!resp.isSuccessful()) {
-                throw new IOException("Error deleting session: " + resp);
-            }
-        }
-    }
+	/**
+	 * Disconnect a client by client ID.
+	 *
+	 * @param clientId the ID of the client to disconnect
+	 * @throws EmqxApiException if disconnection fails
+	 */
+	public void disconnectClient(String clientId) throws IOException {
+		String url  = String.format("%s/clients/%s", baseUrl, clientId);
+		Request req = new Request.Builder().url(url).delete().build();
+		try (Response resp = httpClient.newCall(req).execute()) {
+			throwOnError(resp);
+		}
+	}
 
-    // --------- Subscription Management ---------
+	// -------------------------------------------------------------------------
+	// Session Management
+	// -------------------------------------------------------------------------
 
-    /**
-     * List subscriptions for a client.
-     *
-     * @param clientId the ID of the client
-     * @return a list of {@link SubscriptionDto}
-     * @throws IOException if a network or parsing error occurs
-     */
-    public List<SubscriptionDto> listSubscriptions(String clientId) throws IOException {
-        String url = String.format("%s/subscriptions/%s", baseUrl, clientId);
-        Request req = new Request.Builder().url(url).get().build();
-        try (Response resp = httpClient.newCall(req).execute()) {
-            if (!resp.isSuccessful()) {
-                throw new IOException("Error listing subscriptions: " + resp);
-            }
-            Type listType = new TypeToken<List<SubscriptionDto>>() {}.getType();
-            return gson.fromJson(resp.body().string(), listType);
-        }
-    }
+	/**
+	 * Retrieve session information for a client.
+	 *
+	 * @param clientId the ID of the client
+	 * @return the {@link SessionDto}
+	 * @throws EmqxApiException if not found
+	 */
+	public SessionDto getSession(String clientId) throws IOException {
+		String url  = String.format("%s/sessions/%s", baseUrl, clientId);
+		Request req = new Request.Builder().url(url).get().build();
+		try (Response resp = httpClient.newCall(req).execute()) {
+			throwOnError(resp);
+			return gson.fromJson(bodyString(resp), SessionDto.class);
+		}
+	}
 
-    // --------- Node Management ---------
+	/**
+	 * Delete a session for a client.
+	 *
+	 * @param clientId the ID of the client
+	 * @throws EmqxApiException if deletion fails
+	 */
+	public void deleteSession(String clientId) throws IOException {
+		String url  = String.format("%s/sessions/%s", baseUrl, clientId);
+		Request req = new Request.Builder().url(url).delete().build();
+		try (Response resp = httpClient.newCall(req).execute()) {
+			throwOnError(resp);
+		}
+	}
 
-    /**
-     * List all cluster nodes.
-     *
-     * @return a list of {@link NodeDto}
-     * @throws IOException if a network or parsing error occurs
-     */
-    public List<NodeDto> listNodes() throws IOException {
-        String url = String.format("%s/nodes", baseUrl);
-        Request req = new Request.Builder().url(url).get().build();
-        try (Response resp = httpClient.newCall(req).execute()) {
-            if (!resp.isSuccessful()) {
-                throw new IOException("Error listing nodes: " + resp);
-            }
-            Type listType = new TypeToken<List<NodeDto>>() {}.getType();
-            return gson.fromJson(resp.body().string(), listType);
-        }
-    }
+	// -------------------------------------------------------------------------
+	// Subscription Management
+	// -------------------------------------------------------------------------
 
-    // --------- Builder ---------
+	/**
+	 * List subscriptions for a client.
+	 *
+	 * @param clientId the ID of the client
+	 * @return a list of {@link SubscriptionDto}
+	 * @throws EmqxApiException on network or parse errors
+	 */
+	public List<SubscriptionDto> listSubscriptions(String clientId) throws IOException {
+		String url  = String.format("%s/subscriptions/%s", baseUrl, clientId);
+		Request req = new Request.Builder().url(url).get().build();
+		try (Response resp = httpClient.newCall(req).execute()) {
+			return parseListResponse(resp, SubscriptionDto.class);
+		}
+	}
 
-    /**
-     * Create a new {@link Builder} for configuring and building an {@link EmqxSdkClient}.
-     */
-    public static Builder builder() {
-        return new Builder();
-    }
+	// -------------------------------------------------------------------------
+	// Node Management
+	// -------------------------------------------------------------------------
 
-    /**
-     * Builder for {@link EmqxSdkClient}, supporting base URL, authentication, and custom Gson.
-     */
-    public static class Builder {
-        private String      baseUrl;
-        private Interceptor authInterceptor;
-        private Gson        gson;
+	/**
+	 * List all cluster nodes.
+	 *
+	 * @return a list of {@link NodeDto}
+	 * @throws EmqxApiException on network or parse errors
+	 */
+	public List<NodeDto> listNodes() throws IOException {
+		String url  = String.format("%s/nodes", baseUrl);
+		Request req = new Request.Builder().url(url).get().build();
+		try (Response resp = httpClient.newCall(req).execute()) {
+			return parseListResponse(resp, NodeDto.class);
+		}
+	}
 
-        /**
-         * Set the EMQX base URL (e.g., http://localhost:8080/api/v5).
-         *
-         * @param baseUrl the base URL
-         * @return this builder
-         */
-        public Builder baseUrl(String baseUrl) {
-            this.baseUrl = baseUrl;
-            return this;
-        }
+	// -------------------------------------------------------------------------
+	// Authenticator Management (bonus — create/list built-in authenticators)
+	// -------------------------------------------------------------------------
 
-        /**
-         * Override the default Gson instance.
-         *
-         * @param gson a pre-configured Gson
-         * @return this builder
-         */
-        public Builder gson(Gson gson) {
-            this.gson = gson;
-            return this;
-        }
+	/**
+	 * List all configured authentication chains.
+	 *
+	 * @return a list of authenticator info objects (as generic JsonObject)
+	 * @throws EmqxApiException on network or parse errors
+	 */
+	public List<AuthenticatorDto> listAuthenticators() throws IOException {
+		String url  = String.format("%s/authentication", baseUrl);
+		Request req = new Request.Builder().url(url).get().build();
+		try (Response resp = httpClient.newCall(req).execute()) {
+			return parseListResponse(resp, AuthenticatorDto.class);
+		}
+	}
 
-        /**
-         * Use HTTP Basic Auth with API key and secret.
-         *
-         * @param apiKey    the API key
-         * @param apiSecret the API secret
-         * @return this builder
-         */
-        public Builder basicAuth(String apiKey, String apiSecret) {
-            final String cred = Credentials.basic(apiKey, apiSecret);
-            this.authInterceptor = chain -> {
-                Request req = chain.request().newBuilder()
-                        .header("Authorization", cred)
-                        .build();
-                return chain.proceed(req);
-            };
-            return this;
-        }
+	/**
+	 * Create a built-in database authenticator.
+	 *
+	 * @param name               authenticator name (used as part of the ID)
+	 * @param passwordHashAlgo  hash algorithm: "bcrypt", "sha256", "md5", etc.
+	 * @param saltRounds        salt rounds (for bcrypt, use 10)
+	 * @return the created authenticator descriptor
+	 * @throws EmqxApiException on HTTP errors
+	 */
+	public AuthenticatorDto createBuiltInDbAuthenticator(String name, String passwordHashAlgo, int saltRounds) throws IOException {
+		String url  = String.format("%s/authentication", baseUrl);
+		String json = gson.toJson(new AuthenticatorDto.BuiltInDb(name, passwordHashAlgo, saltRounds));
+		RequestBody body = RequestBody.create(json, MediaType.get("application/json"));
+		Request req = new Request.Builder().url(url).post(body).build();
+		try (Response resp = httpClient.newCall(req).execute()) {
+			throwOnError(resp);
+			return gson.fromJson(bodyString(resp), AuthenticatorDto.class);
+		}
+	}
 
-        /**
-         * Use Bearer token authentication (JWT).
-         *
-         * @param token the JWT token
-         * @return this builder
-         */
-        public Builder bearerAuth(String token) {
-            this.authInterceptor = chain -> {
-                Request req = chain.request().newBuilder()
-                        .header("Authorization", "Bearer " + token)
-                        .build();
-                return chain.proceed(req);
-            };
-            return this;
-        }
+	// -------------------------------------------------------------------------
+	// Builder
+	// -------------------------------------------------------------------------
 
-        /**
-         * Build the {@link EmqxSdkClient}.
-         *
-         * @return a configured {@link EmqxSdkClient}
-         * @throws IllegalStateException if baseUrl is not set
-         */
-        public EmqxSdkClient build() {
-            if (baseUrl == null || baseUrl.isBlank()) {
-                throw new IllegalStateException("baseUrl must be set");
-            }
-            return new EmqxSdkClient(this);
-        }
-    }
+	public static Builder builder() { return new Builder(); }
+
+	public static class Builder {
+		private String      baseUrl;
+		private Interceptor authInterceptor;
+		private Gson        gson;
+		private long        connectTimeoutMs = 10_000;
+		private long        readTimeoutMs    = 30_000;
+		private long        writeTimeoutMs   = 30_000;
+
+		public Builder baseUrl(String baseUrl) { this.baseUrl = baseUrl; return this; }
+
+		public Builder gson(Gson gson) { this.gson = gson; return this; }
+
+		public Builder connectTimeout(long ms)  { this.connectTimeoutMs = ms; return this; }
+		public Builder readTimeout(long ms)     { this.readTimeoutMs    = ms; return this; }
+		public Builder writeTimeout(long ms)   { this.writeTimeoutMs   = ms; return this; }
+
+		/**
+		 * Use HTTP Basic Auth with API key and secret.
+		 * Note: EMQX 5.x CE does not expose API key creation via REST API;
+		 * use the Dashboard UI (Settings → API Keys) or JWT instead.
+		 */
+		public Builder basicAuth(String apiKey, String apiSecret) {
+			final String cred = Credentials.basic(apiKey, apiSecret);
+			this.authInterceptor = chain -> {
+				Request req = chain.request().newBuilder()
+						.header("Authorization", cred)
+						.build();
+				return chain.proceed(req);
+			};
+			return this;
+		}
+
+		/**
+		 * Use Bearer token authentication (JWT).
+		 * Obtain a JWT by calling {@code POST <baseUrl>/login}
+		 * with {@code {"username": "...", "password": "..."}}.
+		 */
+		public Builder bearerAuth(String token) {
+			this.authInterceptor = chain -> {
+				Request req = chain.request().newBuilder()
+						.header("Authorization", "Bearer " + token)
+						.build();
+				return chain.proceed(req);
+			};
+			return this;
+		}
+
+		public EmqxSdkClient build() {
+			if (baseUrl == null || baseUrl.isBlank()) {
+				throw new IllegalStateException("baseUrl must be set");
+			}
+			return new EmqxSdkClient(this);
+		}
+	}
 }

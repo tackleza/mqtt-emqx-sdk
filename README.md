@@ -1,129 +1,126 @@
 # mqtt-emqx-sdk
 
-A lightweight Java client for EMQX Management REST API. Provides synchronous methods for managing users, ACL rules, clients, sessions, subscriptions, and cluster nodes.
+A lightweight Java client for EMQX Management REST API v5. Provides synchronous
+methods for managing authenticators, users, clients, sessions, subscriptions, and
+cluster nodes.
 
 **⚠️ Beta & No Warranty**
 
-> This SDK is in beta, untested, and provided *as-is* without any warranty. Use at your own risk. **APIs may change frequently.**
+> This SDK is in beta. APIs may change. Use at your own risk.
 
 ## Features
 
-* **User Management**: create, retrieve, list, and delete users via built‑in or custom authenticators
-* **ACL Management**: create, retrieve, list, and delete ACL rules
-* **Client Management**: list connected clients and disconnect by client ID
-* **Session Management**: retrieve and delete client sessions
-* **Subscription Management**: list subscriptions per client
-* **Node Management**: list cluster nodes
-* **Authentication**: supports HTTP Basic (API key/secret) and Bearer token (JWT)
-* **Built‑in Enums**: `AuthenticatorId` enum for standard EMQX authentication chains
+* **Authenticator Management** — create and list password-based authenticators
+* **User Management** — create, retrieve, list, and delete users via built‑in or
+  custom authenticators
+* **Client Management** — list connected clients and disconnect by client ID
+* **Session Management** — retrieve and delete client sessions
+* **Subscription Management** — list subscriptions per client
+* **Node Management** — list cluster nodes
+* **Authentication** — supports HTTP Basic (API key/secret) and Bearer token (JWT)
 
-## Getting Started
-
-### Prerequisites
+## Requirements
 
 * Java 21 or higher
-* Maven 3.x (for building this SDK)
-* EMQX broker (v4.x or later) with Management API enabled
-
-### Dependencies
-
-* **OkHttp**: `com.squareup.okhttp3:okhttp:4.9.3`
-* **Gson**: `com.google.code.gson:gson:2.9.0`
+* Maven 3.x
+* OkHttp 4.9.3 + Gson 2.9.0 (included as transitive deps)
 
 ## Usage Examples
 
-### 1. Basic Auth Example
+### JWT Auth (recommended for EMQX 5.x CE)
 
 ```java
 import com.apidech.sdk.emqxsdk.EmqxSdkClient;
-import com.apidech.sdk.emqxsdk.AuthenticatorId;
 import com.apidech.sdk.emqxsdk.UserDto;
 
-public class BasicAuthExample {
-    public static void main(String[] args) throws Exception {
-        EmqxSdkClient client = EmqxSdkClient.builder()
-            .baseUrl("http://localhost:8080/api/v5")
-            .basicAuth("apiKey", "apiSecret")
-            .build();
+EmqxSdkClient client = EmqxSdkClient.builder()
+    .baseUrl("http://localhost:18083/api/v5")
+    .bearerAuth(jwtToken)   // obtain via POST /api/v5/login
+    .build();
 
-        UserDto user = new UserDto("alice", "secret", "built_in_database");
-        client.createUser(AuthenticatorId.DEFAULT, user);
-        client.listUsers(AuthenticatorId.DEFAULT)
-            .forEach(u -> System.out.println(u.getUsername()));
-    }
-}
+// List nodes
+client.listNodes().forEach(n -> System.out.println(n.node + " " + n.version));
+
+// Create authenticator (one-time setup)
+client.createBuiltInDbAuthenticator("my-auth", "bcrypt", 10);
+
+// Create user
+UserDto user = UserDto.builder()
+    .user_id("alice")
+    .password("secret")
+    .build();
+client.createUser(AuthenticatorId.DEFAULT, user);
+
+// List users (returns paginated {data:[], meta:{}} wrapper)
+client.listUsers(AuthenticatorId.DEFAULT)
+    .forEach(u -> System.out.println(u.getUserId()));
 ```
 
-### 2. Bearer Token Example
+### Basic Auth (API key)
 
 ```java
-import com.apidech.sdk.emqxsdk.EmqxSdkClient;
-import com.apidech.sdk.emqxsdk.AuthenticatorId;
-
-public class BearerAuthExample {
-    public static void main(String[] args) throws Exception {
-        String jwtToken = "eyJhbGci..."; // obtained from EMQX login endpoint
-
-        EmqxSdkClient client = EmqxSdkClient.builder()
-            .baseUrl("http://localhost:8080/api/v5")
-            .bearerAuth(jwtToken)
-            .build();
-
-        client.listClients()
-            .forEach(c -> System.out.println(c.getClientid()));
-    }
-}
+EmqxSdkClient client = EmqxSdkClient.builder()
+    .baseUrl("http://localhost:18083/api/v5")
+    .basicAuth("your-api-key", "your-api-secret")
+    .build();
 ```
+
+> **Note:** EMQX 5.x CE does not expose API key creation via REST API.
+> Create permanent API keys via **Dashboard → Settings → API Keys**.
+> For testing, use JWT auth instead.
+
+## EMQX Version Compatibility
+
+| SDK Version | EMQX Version | Notes |
+|------------|--------------|-------|
+| 0.0.x      | **5.x**      | Current — v5 API (recommended) |
+| 0.0.x      | 4.x          | ⚠️ Not tested; `/acl` endpoint removed in v5 |
+
+> The `/acl` REST API (EMQX 4.x) does **not exist** in EMQX 5.x CE.
+> ACLs are managed via `authorization/sources` (file-based) in v5.
 
 ## API Reference
 
-### `EmqxSdkClient` Methods
+### EmqxSdkClient Methods
 
-* **User Management**
+* **Authenticator Management**
+  * `List<AuthenticatorDto> listAuthenticators()`
+  * `AuthenticatorDto createBuiltInDbAuthenticator(String name, String hashAlgo, int saltRounds)`
 
+* **User Management** — use `AuthenticatorId.DEFAULT` for built-in DB
   * `UserDto createUser(AuthenticatorId, UserDto)`
-  * `UserDto getUser(AuthenticatorId, String)`
+  * `UserDto getUser(AuthenticatorId, String userId)`
   * `List<UserDto> listUsers(AuthenticatorId)`
-  * `void deleteUser(AuthenticatorId, String)`
-
-* **ACL Management**
-
-  * `AclDto createAcl(AclDto)`
-  * `AclDto getAcl(int)`
-  * `List<AclDto> listAcls()`
-  * `void deleteAcl(int)`
+  * `void deleteUser(AuthenticatorId, String userId)`
 
 * **Client Management**
-
   * `List<ClientDto> listClients()`
-  * `void disconnectClient(String)`
+  * `void disconnectClient(String clientId)`
 
 * **Session Management**
-
-  * `SessionDto getSession(String)`
-  * `void deleteSession(String)`
+  * `SessionDto getSession(String clientId)`
+  * `void deleteSession(String clientId)`
 
 * **Subscription Management**
-
-  * `List<SubscriptionDto> listSubscriptions(String)`
+  * `List<SubscriptionDto> listSubscriptions(String clientId)`
 
 * **Node Management**
-
   * `List<NodeDto> listNodes()`
 
-## AuthenticatorId
+## Key Differences from v4.x
 
-Use the `AuthenticatorId` enum to select which authentication chain to call. If you don’t know which to choose, use `AuthenticatorId.DEFAULT`.
+* User field is **`user_id`** (not `username`)
+* List responses are **paginated**: `{"data": [...], "meta": {"count": N, ...}}`
+* ACL methods removed — not available in EMQX 5.x CE
 
-Common IDs:
+## Building
 
-* `AuthenticatorId.DEFAULT` — alias for `password_based:built_in_database`
-* `AuthenticatorId.PASSWORD_BASED_MYSQL`
-* `AuthenticatorId.PASSWORD_BASED_POSTGRESQL`
-* `AuthenticatorId.JWT`
-* `AuthenticatorId.SCRAM_BUILT_IN_DATABASE`
-* ...see source for full list
+```bash
+mvn compile    # compile
+mvn test       # run tests (requires EMQX running at localhost:18083)
+mvn package    # build JAR
+```
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE) for details.
+Apache License 2.0. See [LICENSE](LICENSE).
