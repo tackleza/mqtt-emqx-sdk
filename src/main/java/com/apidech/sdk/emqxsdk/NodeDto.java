@@ -15,7 +15,7 @@ public class NodeDto {
 	public Integer max_fds;
 	public Integer threads;
 	public Integer socks_total;
-	public Boolean live_connections;
+	public Integer live_connections;  // NUMBER 0/1 from EMQX API  // NUMBER 0/1 from EMQX API
 
 	// --- Builder support ---
 
@@ -36,7 +36,7 @@ public class NodeDto {
 		public Builder max_fds(Integer v)          { dto.max_fds          = v;  return this; }
 		public Builder threads(Integer v)          { dto.threads          = v;  return this; }
 		public Builder socks_total(Integer v)      { dto.socks_total      = v;  return this; }
-		public Builder live_connections(Boolean v) { dto.live_connections = v;  return this; }
+		public Builder live_connections(Integer v) { dto.live_connections = v;  return this; }
 
 		public NodeDto build() { return dto; }
 	}

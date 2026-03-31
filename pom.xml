@@ -6,25 +6,56 @@
   <name>mqtt-emqx-sdk</name>
   <description>SDK for EMQX CE</description>
   
-  <dependencies>  
-    <!-- OkHttp for HTTP calls -->  
-    <dependency>  
-      <groupId>com.squareup.okhttp3</groupId>  
-      <artifactId>okhttp</artifactId>  
-      <version>4.9.3</version>  
-    </dependency>  
+  <dependencies>
+    <!-- OkHttp for HTTP calls -->
+    <dependency>
+      <groupId>com.squareup.okhttp3</groupId>
+      <artifactId>okhttp</artifactId>
+      <version>4.9.3</version>
+    </dependency>
 
-    <!-- Gson for JSON serialization/deserialization -->  
-    <dependency>  
-      <groupId>com.google.code.gson</groupId>  
-      <artifactId>gson</artifactId>  
-      <version>2.9.0</version>  
-    </dependency>  
+    <!-- Gson for JSON serialization/deserialization -->
+    <dependency>
+      <groupId>com.google.code.gson</groupId>
+      <artifactId>gson</artifactId>
+      <version>2.9.0</version>
+    </dependency>
+
+    <!-- Test dependencies -->
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.squareup.okhttp3</groupId>
+      <artifactId>mockwebserver</artifactId>
+      <version>4.12.0</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.mockito</groupId>
+      <artifactId>mockito-core</artifactId>
+      <version>5.14.2</version>
+      <scope>test</scope>
+    </dependency>
   </dependencies>
   
-  <properties>  
-    <maven.compiler.source>21</maven.compiler.source>  
-    <maven.compiler.target>21</maven.compiler.target>  
+  <properties>
+    <maven.compiler.source>21</maven.compiler.source>
+    <maven.compiler.target>21</maven.compiler.target>
+    <junit.version>5.11.4</junit.version>
   </properties>
-  
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.2</version>
+      </plugin>
+    </plugins>
+  </build>
+
 </project>
