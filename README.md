@@ -1,62 +1,63 @@
 # mqtt-emqx-sdk
 
-A lightweight Java client for EMQX Management REST API v5. Provides synchronous
-methods for managing authenticators, users, clients, sessions, subscriptions, and
-cluster nodes.
-
-**⚠️ Beta & No Warranty**
-
-> This SDK is in beta. APIs may change. Use at your own risk.
+A lightweight Java client for the EMQX Management REST API v5.
 
 ## Features
 
-* **Authenticator Management** — create and list password-based authenticators
-* **User Management** — create, retrieve, list, and delete users via built‑in or
-  custom authenticators
-* **Client Management** — list connected clients and disconnect by client ID
-* **Session Management** — retrieve and delete client sessions
-* **Subscription Management** — list subscriptions per client
-* **Node Management** — list cluster nodes
-* **Authentication** — supports HTTP Basic (API key/secret) and Bearer token (JWT)
+- **Authenticators** — create and list password-based auth chains
+- **Users** — create, get, list, delete via any authenticator
+- **Clients** — list connected clients, disconnect by client ID
+- **Sessions** — get and delete client sessions
+- **Subscriptions** — list topics a client is subscribed to
+- **Nodes** — list cluster nodes and their status
+- **Auth** — supports Bearer token (JWT) and Basic Auth (API key)
 
 ## Requirements
 
-* Java 21 or higher
-* Maven 3.x
-* OkHttp 4.9.3 + Gson 2.9.0 (included as transitive deps)
+- Java 21
+- Maven 3.x
 
-## Usage Examples
+## Quick Start
 
-### JWT Auth (recommended for EMQX 5.x CE)
+### 1. Add dependency
 
-```java
-import com.apidech.sdk.emqxsdk.EmqxSdkClient;
-import com.apidech.sdk.emqxsdk.UserDto;
-
-EmqxSdkClient client = EmqxSdkClient.builder()
-    .baseUrl("http://localhost:18083/api/v5")
-    .bearerAuth(jwtToken)   // obtain via POST /api/v5/login
-    .build();
-
-// List nodes
-client.listNodes().forEach(n -> System.out.println(n.node + " " + n.version));
-
-// Create authenticator (one-time setup)
-client.createBuiltInDbAuthenticator("my-auth", "bcrypt", 10);
-
-// Create user
-UserDto user = UserDto.builder()
-    .user_id("alice")
-    .password("secret")
-    .build();
-client.createUser(AuthenticatorId.DEFAULT, user);
-
-// List users (returns paginated {data:[], meta:{}} wrapper)
-client.listUsers(AuthenticatorId.DEFAULT)
-    .forEach(u -> System.out.println(u.getUserId()));
+```xml
+<dependency>
+  <groupId>com.apidech.sdk</groupId>
+  <artifactId>mqtt-emqx-sdk</artifactId>
+  <version>0.1.0-beta</version>
+</dependency>
 ```
 
-### Basic Auth (API key)
+Or grab the JAR from the `target/` directory after building.
+
+### 2. Authenticate
+
+EMQX 5.x CE uses JWT for the Management API. Obtain a token via the login endpoint:
+
+```java
+// 1. Get a JWT
+HttpClient http = HttpClient.newHttpClient();
+var tokenRequest = HttpRequest.newBuilder()
+    .uri(URI.create("http://localhost:18083/api/v5/login"))
+    .header("Content-Type", "application/json")
+    .POST(HttpRequest.BodyPublishers.ofString(
+        "{\"username\":\"admin\",\"password\":\"public\"}"))
+    .build();
+
+var tokenResponse = http.send(tokenRequest,
+    HttpResponse.BodyHandlers.ofString());
+String jwt = new JSONObject(tokenResponse.body())
+    .getString("token");
+
+// 2. Build the client
+EmqxSdkClient client = EmqxSdkClient.builder()
+    .baseUrl("http://localhost:18083/api/v5")
+    .bearerAuth(jwt)
+    .build();
+```
+
+For permanent API keys, create one at **Dashboard → Settings → API Keys**, then use:
 
 ```java
 EmqxSdkClient client = EmqxSdkClient.builder()
@@ -65,61 +66,105 @@ EmqxSdkClient client = EmqxSdkClient.builder()
     .build();
 ```
 
-> **Note:** EMQX 5.x CE does not expose API key creation via REST API.
-> Create permanent API keys via **Dashboard → Settings → API Keys**.
-> For testing, use JWT auth instead.
+### 3. Use it
 
-## EMQX Version Compatibility
+```java
+// List cluster nodes
+client.listNodes()
+    .forEach(n -> System.out.println(n.node + " " + n.status));
 
-| SDK Version | EMQX Version | Notes |
-|------------|--------------|-------|
-| 0.0.x      | **5.x**      | Current — v5 API (recommended) |
-| 0.0.x      | 4.x          | ⚠️ Not tested; `/acl` endpoint removed in v5 |
+// Set up built-in DB authenticator (one-time)
+client.createBuiltInDbAuthenticator("my-auth", "bcrypt", 10);
 
-> The `/acl` REST API (EMQX 4.x) does **not exist** in EMQX 5.x CE.
-> ACLs are managed via `authorization/sources` (file-based) in v5.
+// Create a user
+UserDto user = UserDto.builder()
+    .user_id("alice")
+    .password("secret123")
+    .build();
+client.createUser(AuthenticatorId.DEFAULT, user);
+
+// List all users
+client.listUsers(AuthenticatorId.DEFAULT)
+    .forEach(u -> System.out.println(u.getUserId()));
+
+// Disconnect a client
+client.disconnectClient("client-42");
+```
 
 ## API Reference
 
-### EmqxSdkClient Methods
+### EmqxSdkClient
 
-* **Authenticator Management**
-  * `List<AuthenticatorDto> listAuthenticators()`
-  * `AuthenticatorDto createBuiltInDbAuthenticator(String name, String hashAlgo, int saltRounds)`
+#### Authenticator Management
+| Method | Description |
+|--------|-------------|
+| `listAuthenticators()` | List all configured authenticator chains |
+| `createBuiltInDbAuthenticator(name, hashAlgo, saltRounds)` | Create a built-in DB authenticator |
 
-* **User Management** — use `AuthenticatorId.DEFAULT` for built-in DB
-  * `UserDto createUser(AuthenticatorId, UserDto)`
-  * `UserDto getUser(AuthenticatorId, String userId)`
-  * `List<UserDto> listUsers(AuthenticatorId)`
-  * `void deleteUser(AuthenticatorId, String userId)`
+#### User Management
+| Method | Description |
+|--------|-------------|
+| `createUser(AuthenticatorId, UserDto)` | Register a new user |
+| `getUser(AuthenticatorId, String userId)` | Get a single user |
+| `listUsers(AuthenticatorId)` | List all users |
+| `deleteUser(AuthenticatorId, String userId)` | Delete a user |
 
-* **Client Management**
-  * `List<ClientDto> listClients()`
-  * `void disconnectClient(String clientId)`
+#### Client Management
+| Method | Description |
+|--------|-------------|
+| `listClients()` | List connected MQTT clients |
+| `disconnectClient(String clientId)` | Force-disconnect a client |
 
-* **Session Management**
-  * `SessionDto getSession(String clientId)`
-  * `void deleteSession(String clientId)`
+#### Session Management
+| Method | Description |
+|--------|-------------|
+| `getSession(String clientId)` | Get session details for a client |
+| `deleteSession(String clientId)` | Delete a client's session |
 
-* **Subscription Management**
-  * `List<SubscriptionDto> listSubscriptions(String clientId)`
+#### Subscription Management
+| Method | Description |
+|--------|-------------|
+| `listSubscriptions(String clientId)` | List topics a client is subscribed to |
 
-* **Node Management**
-  * `List<NodeDto> listNodes()`
+#### Node Management
+| Method | Description |
+|--------|-------------|
+| `listNodes()` | List all cluster nodes |
 
-## Key Differences from v4.x
+## Key Things to Know
 
-* User field is **`user_id`** (not `username`)
-* List responses are **paginated**: `{"data": [...], "meta": {"count": N, ...}}`
-* ACL methods removed — not available in EMQX 5.x CE
+- **User field** — use `user_id`, not `username` (EMQX convention)
+- **List responses** — EMQX returns `{"data": [...], "meta": {...}}`; this SDK unwraps to `List<T>` automatically
+- **ACLs** — the `/acl` REST endpoint doesn't exist in EMQX 5.x CE. ACLs are configured via `authorization/sources` (file-based)
+- **No API key creation via REST** — EMQX 5.x CE doesn't expose this; use Dashboard UI to create keys
 
 ## Building
 
 ```bash
-mvn compile    # compile
-mvn test       # run tests (requires EMQX running at localhost:18083)
-mvn package    # build JAR
+mvn compile   # compile
+mvn test      # run unit tests (no EMQX needed — uses MockWebServer)
+mvn package   # build JAR
 ```
+
+## EMQX Version Compatibility
+
+| SDK Version | EMQX | Notes |
+|------------|------|-------|
+| `0.1.0-beta` | **5.x** | ✅ Recommended |
+| `0.1.0-beta` | 4.x | ⚠️ `/acl` and `/api/v5` paths differ; untested |
+
+## Docker Test Environment
+
+A docker-compose setup is included for local testing:
+
+```bash
+cd /home/tackle/Local\ Disk/Docker/mqtt-emqx-sdk/
+./setup.sh   # starts EMQX, prints credentials
+./teardown.sh # stops EMQX
+```
+
+- Dashboard: http://localhost:18083 (admin / public)
+- MQTT: `localhost:1883`
 
 ## License
 
