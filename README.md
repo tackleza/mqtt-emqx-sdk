@@ -138,12 +138,61 @@ client.disconnectClient("client-42");
 - **ACLs** — the `/acl` REST endpoint doesn't exist in EMQX 5.x CE. ACLs are configured via `authorization/sources` (file-based)
 - **No API key creation via REST** — EMQX 5.x CE doesn't expose this; use Dashboard UI to create keys
 
-## Building
+## Building & Testing
+
+### Build Commands
 
 ```bash
 mvn compile   # compile
 mvn test      # run unit tests (no EMQX needed — uses MockWebServer)
 mvn package   # build JAR
+mvn install   # install to local Maven repository
+```
+
+### Unit Tests
+
+The project includes **23 comprehensive unit tests** using `MockWebServer`:
+
+```bash
+mvn test -Dtest=EmqxSdkClientTest
+```
+
+✅ **No external dependencies** — tests run in ~2 seconds  
+✅ **Full API coverage** — node/user/client/session/subscription management  
+✅ **Error handling** — tests HTTP errors, JSON parsing, auth failures  
+
+These tests verify:
+- Request methods (GET, POST, DELETE)
+- URL paths and query parameters
+- Authorization headers
+- Response JSON deserialization
+- Error code handling
+
+### Integration Tests (Optional)
+
+If you want to test against a real EMQX broker, see [README_INTEGRATION_TESTS.md](README_INTEGRATION_TESTS.md) for setup instructions using Docker.
+
+**Note:** Integration tests require EMQX 4.4.8+ and Docker. The unit tests are recommended for CI/CD pipelines.
+
+## Project Structure
+
+```
+src/
+├── main/java/com/apidech/sdk/emqxsdk/
+│   ├── EmqxSdkClient.java         # Main HTTP client
+│   ├── EmqxApiException.java      # Error handling
+│   ├── *Dto.java                  # Data transfer objects (20+ classes)
+│   └── AuthenticatorId.java       # Authenticator enumeration
+│
+└── test/java/com/apidech/sdk/emqxsdk/
+    ├── EmqxSdkClientTest.java                    # 23 unit tests ✅
+    ├── EmqxSdkClientExternalIntegrationTest.java # External broker tests
+    ├── EmqxSdkClientIntegrationTest.java         # TestContainers tests
+    └── EmqxSdkClientV4IntegrationTest.java       # EMQX 4.4.8 tests
+
+docker-compose.yml                # Local EMQX test environment
+run-integration-tests.sh           # Helper script for Docker testing
+README_INTEGRATION_TESTS.md        # Integration testing guide
 ```
 
 ## EMQX Version Compatibility
@@ -151,20 +200,37 @@ mvn package   # build JAR
 | SDK Version | EMQX | Notes |
 |------------|------|-------|
 | `0.1.0-beta` | **5.x** | ✅ Recommended |
-| `0.1.0-beta` | 4.x | ⚠️ `/acl` and `/api/v5` paths differ; untested |
+| `0.1.0-beta` | 4.4.8 | ⚠️ API format differs; unit tests pass |
 
-## Docker Test Environment
+## Docker Test Environment (Optional)
 
-A docker-compose setup is included for local testing:
+A `docker-compose.yml` is included for local integration testing with a real EMQX broker:
 
 ```bash
-cd /home/tackle/Local\ Disk/Docker/mqtt-emqx-sdk/
-./setup.sh   # starts EMQX, prints credentials
-./teardown.sh # stops EMQX
+# Start EMQX 4.4.8
+docker-compose up -d
+
+# Wait for readiness, then run tests
+mvn test -Dtest=EmqxSdkClientExternalIntegrationTest
+
+# Stop and clean up
+docker-compose down
 ```
 
+**Or use the helper script:**
+
+```bash
+./run-integration-tests.sh up      # Start EMQX + run tests
+./run-integration-tests.sh down    # Stop EMQX
+./run-integration-tests.sh logs    # View EMQX logs
+```
+
+**Access the broker:**
 - Dashboard: http://localhost:18083 (admin / public)
 - MQTT: `localhost:1883`
+- REST API: `http://localhost:18083/api/v4`
+
+**For full details on integration testing**, see [README_INTEGRATION_TESTS.md](README_INTEGRATION_TESTS.md).
 
 ## License
 

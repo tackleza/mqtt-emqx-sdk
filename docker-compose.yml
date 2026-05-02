@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  emqx:
+    image: emqx/emqx:4.4.8
+    container_name: mqtt-emqx-test
+    ports:
+      - "1883:1883"     # MQTT
+      - "8883:8883"     # MQTT/TLS
+      - "8083:8083"     # WebSocket
+      - "8084:8084"     # WebSocket/TLS
+      - "18083:18083"   # Dashboard
+    environment:
+      EMQX_NAME: "emqx"
+      EMQX_HOST: "0.0.0.0"
+    healthcheck:
+      test: ["CMD", "/opt/emqx/bin/emqx", "ctl", "status"]
+      interval: 5s
+      timeout: 10s
+      retries: 5

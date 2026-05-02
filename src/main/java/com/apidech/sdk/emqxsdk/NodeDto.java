@@ -9,13 +9,13 @@ public class NodeDto {
 	public String  version;
 	public String  status;
 	public Long    uptime_ms;
-	public Integer memory_total;
-	public Integer memory_used;
-	public Integer process_memory;
+	public Long    memory_total;   // bytes
+	public Long    memory_used;    // bytes
+	public Long    process_memory; // bytes
 	public Integer max_fds;
 	public Integer threads;
 	public Integer socks_total;
-	public Integer live_connections;  // NUMBER 0/1 from EMQX API  // NUMBER 0/1 from EMQX API
+	public Integer live_connections;
 
 	// --- Builder support ---
 
@@ -30,9 +30,9 @@ public class NodeDto {
 		public Builder version(String v)           { dto.version          = v;  return this; }
 		public Builder status(String v)            { dto.status           = v;  return this; }
 		public Builder uptime_ms(Long v)           { dto.uptime_ms        = v;  return this; }
-		public Builder memory_total(Integer v)     { dto.memory_total     = v;  return this; }
-		public Builder memory_used(Integer v)      { dto.memory_used      = v;  return this; }
-		public Builder process_memory(Integer v)   { dto.process_memory   = v;  return this; }
+		public Builder memory_total(Long v)        { dto.memory_total     = v;  return this; }
+		public Builder memory_used(Long v)         { dto.memory_used      = v;  return this; }
+		public Builder process_memory(Long v)      { dto.process_memory   = v;  return this; }
 		public Builder max_fds(Integer v)          { dto.max_fds          = v;  return this; }
 		public Builder threads(Integer v)          { dto.threads          = v;  return this; }
 		public Builder socks_total(Integer v)      { dto.socks_total      = v;  return this; }

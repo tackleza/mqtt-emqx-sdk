@@ -1,34 +1,23 @@
 package com.apidech.sdk.emqxsdk;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.apidech.sdk.emqxsdk.EmqxSdkClient;
-import com.apidech.sdk.emqxsdk.EmqxApiException;
-import com.apidech.sdk.emqxsdk.UserDto;
-import com.apidech.sdk.emqxsdk.ClientDto;
-import com.apidech.sdk.emqxsdk.SessionDto;
-import com.apidech.sdk.emqxsdk.SubscriptionDto;
-import com.apidech.sdk.emqxsdk.NodeDto;
-import com.apidech.sdk.emqxsdk.AuthenticatorDto;
-import com.apidech.sdk.emqxsdk.AuthenticatorId;
-
-import okhttp3.OkHttpClient;
-import okhttp3.mockwebserver.MockResponse;
-import okhttp3.mockwebserver.MockWebServer;
-import okhttp3.mockwebserver.RecordedRequest;
-import okhttp3.mockwebserver.SocketPolicy;
+import java.io.IOException;
+import java.util.List;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
-import java.io.IOException;
-import java.util.List;
+import okhttp3.mockwebserver.MockResponse;
+import okhttp3.mockwebserver.MockWebServer;
+import okhttp3.mockwebserver.RecordedRequest;
 
 class EmqxSdkClientTest {
 
@@ -131,7 +120,7 @@ class EmqxSdkClientTest {
 	@Nested
 	class UserManagement {
 
-		private static final String AUTH_ID = "password_based:built_in_database";
+//		private static final String AUTH_ID = "password_based:built_in_database";
 
 		@Test
 		void createUser_returnsUser() throws Exception {

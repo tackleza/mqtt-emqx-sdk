@@ -1,8 +1,8 @@
 package com.apidech.sdk.emqxsdk;
 
-import com.google.gson.Gson;
-import com.google.gson.annotations.SerializedName;
 import java.util.List;
+
+import com.google.gson.annotations.SerializedName;
 
 /**
  * Data Transfer Object for ACL rules.

@@ -10,6 +10,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.reflect.TypeToken;
 
 import okhttp3.Credentials;
+import okhttp3.HttpUrl;
 import okhttp3.Interceptor;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -53,6 +54,15 @@ public final class EmqxSdkClient {
 	// Internal helpers
 	// -------------------------------------------------------------------------
 
+	/** Builds a URL by appending properly percent-encoded path segments to baseUrl. */
+	private String url(String... segments) {
+		HttpUrl parsed = HttpUrl.parse(baseUrl);
+		if (parsed == null) throw new IllegalStateException("Invalid baseUrl: " + baseUrl);
+		HttpUrl.Builder b = parsed.newBuilder();
+		for (String seg : segments) b.addPathSegment(seg);
+		return b.build().toString();
+	}
+
 	private void throwOnError(Response resp) throws IOException {
 		if (!resp.isSuccessful()) {
 			String body = resp.body() != null ? resp.body().string() : "";
@@ -81,20 +91,15 @@ public final class EmqxSdkClient {
 		throwOnError(resp);
 		String body = bodyString(resp);
 		if (body.isBlank()) {
-			// Some list endpoints return empty body on empty result
-			//noinspection unchecked
-			return (List<T>) java.util.Collections.emptyList();
+			return java.util.Collections.emptyList();
 		}
-		// Check if wrapped in {data:[], meta:{}} format
+		Type listType = TypeToken.getParameterized(List.class, elementType).getType();
 		try {
 			JsonObject wrapper = gson.fromJson(body, JsonObject.class);
 			if (wrapper != null && wrapper.has("data")) {
-				Type listType = TypeToken.getParameterized(List.class, elementType).getType();
 				return gson.fromJson(wrapper.getAsJsonArray("data"), listType);
 			}
-		} catch (Exception ignored) { /* fall through to array parse */ }
-		// Plain array response
-		Type listType = TypeToken.getParameterized(List.class, elementType).getType();
+		} catch (Exception ignored) { /* fall through to plain array parse */ }
 		return gson.fromJson(body, listType);
 	}
 
@@ -115,7 +120,7 @@ public final class EmqxSdkClient {
 	 * @throws EmqxApiException on HTTP errors or parse failures
 	 */
 	public UserDto createUser(AuthenticatorId authenticatorId, UserDto user) throws IOException {
-		String url  = String.format("%s/authentication/%s/users", baseUrl, authenticatorId);
+		String url  = url("authentication", authenticatorId.toString(), "users");
 		String json = gson.toJson(user);
 		RequestBody body = RequestBody.create(json, MediaType.get("application/json"));
 		Request req = new Request.Builder().url(url).post(body).build();
@@ -134,7 +139,7 @@ public final class EmqxSdkClient {
 	 * @throws EmqxApiException if not found or on network error
 	 */
 	public UserDto getUser(AuthenticatorId authenticatorId, String userId) throws IOException {
-		String url  = String.format("%s/authentication/%s/users/%s", baseUrl, authenticatorId, userId);
+		String url  = url("authentication", authenticatorId.toString(), "users", userId);
 		Request req = new Request.Builder().url(url).get().build();
 		try (Response resp = httpClient.newCall(req).execute()) {
 			throwOnError(resp);
@@ -150,7 +155,7 @@ public final class EmqxSdkClient {
 	 * @throws EmqxApiException on network or parse errors
 	 */
 	public List<UserDto> listUsers(AuthenticatorId authenticatorId) throws IOException {
-		String url  = String.format("%s/authentication/%s/users", baseUrl, authenticatorId);
+		String url  = url("authentication", authenticatorId.toString(), "users");
 		Request req = new Request.Builder().url(url).get().build();
 		try (Response resp = httpClient.newCall(req).execute()) {
 			return parseListResponse(resp, UserDto.class);
@@ -165,7 +170,7 @@ public final class EmqxSdkClient {
 	 * @throws EmqxApiException if deletion fails
 	 */
 	public void deleteUser(AuthenticatorId authenticatorId, String userId) throws IOException {
-		String url  = String.format("%s/authentication/%s/users/%s", baseUrl, authenticatorId, userId);
+		String url  = url("authentication", authenticatorId.toString(), "users", userId);
 		Request req = new Request.Builder().url(url).delete().build();
 		try (Response resp = httpClient.newCall(req).execute()) {
 			throwOnError(resp);
@@ -183,7 +188,7 @@ public final class EmqxSdkClient {
 	 * @throws EmqxApiException on network or parse errors
 	 */
 	public List<ClientDto> listClients() throws IOException {
-		String url  = String.format("%s/clients", baseUrl);
+		String url  = url("clients");
 		Request req = new Request.Builder().url(url).get().build();
 		try (Response resp = httpClient.newCall(req).execute()) {
 			return parseListResponse(resp, ClientDto.class);
@@ -197,7 +202,7 @@ public final class EmqxSdkClient {
 	 * @throws EmqxApiException if disconnection fails
 	 */
 	public void disconnectClient(String clientId) throws IOException {
-		String url  = String.format("%s/clients/%s", baseUrl, clientId);
+		String url  = url("clients", clientId);
 		Request req = new Request.Builder().url(url).delete().build();
 		try (Response resp = httpClient.newCall(req).execute()) {
 			throwOnError(resp);
@@ -216,7 +221,7 @@ public final class EmqxSdkClient {
 	 * @throws EmqxApiException if not found
 	 */
 	public SessionDto getSession(String clientId) throws IOException {
-		String url  = String.format("%s/sessions/%s", baseUrl, clientId);
+		String url  = url("sessions", clientId);
 		Request req = new Request.Builder().url(url).get().build();
 		try (Response resp = httpClient.newCall(req).execute()) {
 			throwOnError(resp);
@@ -231,7 +236,7 @@ public final class EmqxSdkClient {
 	 * @throws EmqxApiException if deletion fails
 	 */
 	public void deleteSession(String clientId) throws IOException {
-		String url  = String.format("%s/sessions/%s", baseUrl, clientId);
+		String url  = url("sessions", clientId);
 		Request req = new Request.Builder().url(url).delete().build();
 		try (Response resp = httpClient.newCall(req).execute()) {
 			throwOnError(resp);
@@ -250,7 +255,7 @@ public final class EmqxSdkClient {
 	 * @throws EmqxApiException on network or parse errors
 	 */
 	public List<SubscriptionDto> listSubscriptions(String clientId) throws IOException {
-		String url  = String.format("%s/subscriptions/%s", baseUrl, clientId);
+		String url  = url("subscriptions", clientId);
 		Request req = new Request.Builder().url(url).get().build();
 		try (Response resp = httpClient.newCall(req).execute()) {
 			return parseListResponse(resp, SubscriptionDto.class);
@@ -268,7 +273,7 @@ public final class EmqxSdkClient {
 	 * @throws EmqxApiException on network or parse errors
 	 */
 	public List<NodeDto> listNodes() throws IOException {
-		String url  = String.format("%s/nodes", baseUrl);
+		String url  = url("nodes");
 		Request req = new Request.Builder().url(url).get().build();
 		try (Response resp = httpClient.newCall(req).execute()) {
 			return parseListResponse(resp, NodeDto.class);
@@ -286,7 +291,7 @@ public final class EmqxSdkClient {
 	 * @throws EmqxApiException on network or parse errors
 	 */
 	public List<AuthenticatorDto> listAuthenticators() throws IOException {
-		String url  = String.format("%s/authentication", baseUrl);
+		String url  = url("authentication");
 		Request req = new Request.Builder().url(url).get().build();
 		try (Response resp = httpClient.newCall(req).execute()) {
 			return parseListResponse(resp, AuthenticatorDto.class);
@@ -303,7 +308,7 @@ public final class EmqxSdkClient {
 	 * @throws EmqxApiException on HTTP errors
 	 */
 	public AuthenticatorDto createBuiltInDbAuthenticator(String name, String passwordHashAlgo, int saltRounds) throws IOException {
-		String url  = String.format("%s/authentication", baseUrl);
+		String url  = url("authentication");
 		String json = gson.toJson(new AuthenticatorDto.BuiltInDb(name, passwordHashAlgo, saltRounds));
 		RequestBody body = RequestBody.create(json, MediaType.get("application/json"));
 		Request req = new Request.Builder().url(url).post(body).build();

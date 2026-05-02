@@ -1,7 +1,5 @@
 package com.apidech.sdk.emqxsdk;
 
-import com.google.gson.annotations.SerializedName;
-
 /**
  * Data Transfer Object for users.
  *
@@ -19,7 +17,7 @@ public class UserDto {
 	public Boolean is_superuser;
 	public Long   created_at;  // Unix epoch seconds (set by EMQX on create)
 
-	// Alias for deserialization — EMQX有时 returns "username" in some contexts
+	// Alias: some EMQX contexts return "username" instead of "user_id"
 	public String username;
 
 	/**

@@ -8,7 +8,7 @@ public class SubscriptionDto {
 	public String  clientid;
 	public String  topic;
 	public Integer qos;
-	public Boolean share;
+	public String  share; // share group name, null for non-shared subscriptions
 
 	// --- Builder support ---
 
@@ -28,7 +28,7 @@ public class SubscriptionDto {
 		public Builder clientid(String v)  { dto.clientid = v;  return this; }
 		public Builder topic(String v)    { dto.topic    = v;  return this; }
 		public Builder qos(Integer v)     { dto.qos      = v;  return this; }
-		public Builder share(Boolean v)  { dto.share    = v;  return this; }
+		public Builder share(String v)   { dto.share    = v;  return this; }
 
 		public SubscriptionDto build() { return dto; }
 	}

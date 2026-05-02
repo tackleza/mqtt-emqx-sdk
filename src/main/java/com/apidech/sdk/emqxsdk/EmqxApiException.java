@@ -8,6 +8,7 @@ import java.io.IOException;
  */
 public class EmqxApiException extends IOException {
 
+	private static final long serialVersionUID = 3854815691844028975L;
 	private final int    httpStatus;
 	private final String emqxMessage;
 
